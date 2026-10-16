@@ -50,10 +50,19 @@ Nice VPN بازنویسی تمیز کلاینتی است که کانفیگ‌ه�
 
 ```bash
 # دانلود آخرین نسخه از Releases و نصب:
-sudo dnf install ./nicevpn-1.1.0-1.x86_64.rpm
+sudo dnf install ./nicevpn-1.2.0-1.x86_64.rpm
 # اجرا از منوی برنامه‌ها یا:
 nicevpn
 ```
+
+> **نسخه ۱.۲ — رفع کامل دو ایراد گزارش‌شده:**
+> 1. **نصب RPM روی فدورا شکست می‌خورد** (خطاهای `python(abi) = 3.11`، `/tmp/tmp.*/…`،
+>    کتابخانه‌های private کیوت و…): علتش اسکن خودکار وابستگیِ RPM روی پایتون/کیوتِ
+>    داخل بسته بود — در v1.2.0 اسکن خودکار کامل خاموش شده و بسته فقط به
+>    `polkit` و `iproute` (که روی فدورا همیشه هست) وابسته است.
+> 2. **پینگ/وضعیت اتصال در رابط کاربری نمایش داده نمی‌شد**: نتایج پینگ، لاگ و
+>    حتی پیام «متصل» از رشته‌های کاری با `QTimer.singleShot` به رابط می‌رفتند که
+>    هرگز اجرا نمی‌شود — حالا همه از طریق پل سیگنال (UiBridge) به درستی به UI می‌رسند.
 
 > **نسخه ۱.۱ به بالا کاملاً خودکفاست**: پایتون، PySide6، xray و tun2socks همگی داخل خود بسته‌اند —
 > هیچ وابستگی سیستمی لازم نیست و خطای «چیزی نصب نیست» وجود ندارد.
@@ -67,9 +76,19 @@ curl -fsSL https://raw.githubusercontent.com/melimcrr-crypto/nice-vpn/main/insta
 
 وابستگی‌ها: **هیچ** — بسته خودکفاست ✅
 
+## نصب — نسخه پرتابل لینوکس (بدون نیاز به RPM)
+
+اگر به هر دلیلی RPM نصب نشد، نسخه پرتابل را باز کنید و اجرا کنید:
+
+```bash
+tar -xzf NiceVPN-1.2.0-Linux-portable.tar.gz
+cd nicevpn-1.2.0
+./run.sh
+```
+
 ## نصب — ویندوز (10/11، x64)
 
-1. از [Releases](https://github.com/melimcrr-crypto/nice-vpn/releases) فایل `NiceVPN-1.1.0-Windows-x64.zip` را بگیرید
+1. از [Releases](https://github.com/melimcrr-crypto/nice-vpn/releases) فایل `NiceVPN-1.2.0-Windows-x64.zip` را بگیرید
 2. Extract کنید و روی **`NiceVPN.bat`** دوبار کلیک کنید — نیاز به نصب ندارد (پرتابل)
 3. اگر باز نشد: `NiceVPN-debug.bat` را اجرا کنید؛ در اکثر موارد نصب
    [VC++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe) حلش می‌کند

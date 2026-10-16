@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 
-from PySide6.QtCore import Qt, QTimer, QSettings, QSize, QRectF, Signal
+from PySide6.QtCore import Qt, QTimer, QSettings, QSize, QRectF, Signal, QObject
 from PySide6.QtGui import (QAction, QColor, QFont, QFontDatabase, QIcon, QLinearGradient,
                            QPainter, QPainterPath, QPen, QBrush, QPixmap, QRadialGradient)
 from PySide6.QtWidgets import (
@@ -229,6 +229,21 @@ class ServerCard(QFrame):
         self.style().polish(self)
 
 
+class UiBridge(QObject):
+    """پل بین‌نخی — ورکرهای پایتون (پینگ/سابسکریپشن/هسته) از طریق این سیگنال‌ها
+    به رشته گرافیکی می‌روند (QueuedConnection خودکار).
+    دلیل مهم: QTimer.singleShot از رشته‌ی غیر-Qt هرگز اجرا نمی‌شود؛ همین باگ باعث
+    می‌شد پینگ، لاگ و حتی وضعیت «متصل» در نسخه‌های قبلی به رابط کاربری نرسد."""
+
+    pingDone = Signal(list)          # نتایج تست پینگ همه سرورها
+    stateChanged = Signal(str, str)  # (state, message) از هسته
+    logLine = Signal(str)            # خط لاگ از هسته
+    statusMsg = Signal(str)          # پیام وضعیت از ورکرها
+    warnBox = Signal(str, str)       # (عنوان، متن) جعبه هشدار
+    infoBox = Signal(str, str)       # (عنوان، متن) جعبه اطلاعات
+    subNodes = Signal(list)          # نودهای دریافتی از سابسکریپشن
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -365,6 +380,17 @@ class MainWindow(QMainWindow):
         self.tray.show()
 
         self.btn.clicked.connect(self.toggle_connect)
+
+        # ---------- پل بین‌نخی (بدون این، پیام رشته‌های دیگر به UI نمی‌رسد) ----------
+        self.bridge = UiBridge(self)
+        self.bridge.pingDone.connect(self._apply_pings)
+        self.bridge.stateChanged.connect(self._apply_state_ui)
+        self.bridge.logLine.connect(self.logs.appendPlainText)
+        self.bridge.statusMsg.connect(self.status.setText)
+        self.bridge.warnBox.connect(self._show_warn)
+        self.bridge.infoBox.connect(self._show_info)
+        self.bridge.subNodes.connect(self._add_nodes)
+
         self._apply_state_ui("stopped", "آماده")
         self.ping_all(silent=True)
 
@@ -404,7 +430,7 @@ class MainWindow(QMainWindow):
                 results = list(ex.map(
                     lambda n: core_mod.tcp_ping(n.real_addr[0], n.real_addr[1], timeout=3),
                     self.all_nodes))
-            QTimer.singleShot(0, lambda: self._apply_pings(results))
+            self.bridge.pingDone.emit(results)
         import threading
         threading.Thread(target=worker, daemon=True).start()
         if not silent:
@@ -453,8 +479,7 @@ class MainWindow(QMainWindow):
             for i in order:
                 node = nodes[i]
                 ping_s = "—" if pings[i] is None else f"{pings[i]} ms"
-                QTimer.singleShot(0, lambda s=f"اتصال خودکار: {node.name} ({ping_s}) …":
-                                  self.status.setText(s))
+                self.bridge.statusMsg.emit(f"اتصال خودکار: {node.name} ({ping_s}) …")
                 try:
                     self.core.start(node, tun_mode=False)  # در تلاش‌های خودکار فقط پروکسی
                 except core_mod.CoreError as e:
@@ -466,21 +491,21 @@ class MainWindow(QMainWindow):
                         break
                     _t.sleep(0.5)
                 if self.core.state == ST_CONNECTED:
-                    QTimer.singleShot(0, lambda: self.status.setText("اتصال خودکار موفق بود ✔"))
+                    self.bridge.statusMsg.emit("اتصال خودکار موفق بود ✔")
                     return
                 try:
                     self.core.stop()
                 except Exception:
                     pass
                 _t.sleep(1.2)
-            QTimer.singleShot(0, lambda: QMessageBox.warning(
-                self, "اتصال خودکار",
-                "هیچ سروری جواب نداد.\nاینترنت و فیلترشکن فعلی را بررسی کنید و دوباره امتحان کنید."))
+            self.bridge.warnBox.emit(
+                "اتصال خودکار",
+                "هیچ سروری جواب نداد.\nاینترنت و فیلترشکن فعلی را بررسی کنید و دوباره امتحان کنید.")
 
         threading.Thread(target=worker, daemon=True).start()
 
     def _on_state(self, state, msg):
-        QTimer.singleShot(0, lambda: self._apply_state_ui(state, msg))
+        self.bridge.stateChanged.emit(state, msg)
 
     def _apply_state_ui(self, state, msg):
         self.status.setText(msg)
@@ -511,8 +536,14 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(8000, lambda: self.status.setText(
                 "آماده — سرور دیگری را امتحان کنید یا از منو «اتصال خودکار» را بزنید"))
 
+    def _show_warn(self, title, text):
+        QMessageBox.warning(self, title, text)
+
+    def _show_info(self, title, text):
+        QMessageBox.information(self, title, text)
+
     def _on_log(self, line):
-        QTimer.singleShot(0, lambda: self.logs.appendPlainText(line))
+        self.bridge.logLine.emit(line)
 
     # ---------------- options ----------------
     def _on_auto_proxy(self, on):
@@ -582,9 +613,8 @@ class MainWindow(QMainWindow):
                 ns = nodes_mod.fetch_subscription(url.strip())
             except Exception as e:
                 ns = []
-                err = str(e)
-                QTimer.singleShot(0, lambda: QMessageBox.warning(self, "خطا", err))
-            QTimer.singleShot(0, lambda: self._add_nodes(ns))
+                self.bridge.warnBox.emit("خطا", str(e))
+            self.bridge.subNodes.emit(ns)
         threading.Thread(target=worker, daemon=True).start()
 
     def _check_ip(self):
@@ -596,10 +626,8 @@ class MainWindow(QMainWindow):
                 msg = f"IP ظاهری شما: {ip}\nکشور: {cc} — {city}"
             except Exception as e:
                 msg = f"بررسی ناموفق (احتمالاً متصل نیستید): {e}"
-            QTimer.singleShot(0, lambda: (
-                self.status.setText("آماده"),
-                QMessageBox.information(self, "IP فعلی", msg),
-            ))
+            self.bridge.infoBox.emit("IP فعلی", msg)
+            self.bridge.statusMsg.emit("آماده")
         threading.Thread(target=worker, daemon=True).start()
 
     def _clear_custom(self):

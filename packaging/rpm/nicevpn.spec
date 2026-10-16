@@ -1,13 +1,24 @@
 Name:           nicevpn
-Version:        1.1.0
+Version:        1.2.0
 Release:        1%{?dist}
 Summary:        Nice VPN — self-contained Xray/VLESS client with GUI for Fedora KDE
 License:        MIT
 URL:            https://github.com/melimcrr-crypto/nice-vpn
 Source0:        nicevpn-%{version}.tar.gz
 BuildArch:      x86_64
-# خودکفا: پایتون و PySide6 و xray و tun2socks داخل خود بسته هستند.
-# فقط این دو برای «تونل کامل» لازم‌اند و روی فدورا از قبل نصب‌اند:
+
+# ── علت خطای نصب v1.1.0 و راه‌حل آن ─────────────────────────────
+# بسته کاملاً خودکفاست (پایتون + PySide6 + xray داخل خودش).
+# اسکن خودکار وابستگیِ RPM روی این فایل‌ها پیش‌نیازهای غلط می‌سازد
+# (python(abi)=3.11، مسیر ساخت /tmp/tmp.*/… ، کتابخانه‌های private
+# کیوت، Oracle/Mimer و…) که dnf را روی فدورا شکست می‌دهد.
+# پس اسکن خودکار را کامل خاموش می‌کنیم؛ فقط دو وابستگی واقعیِ
+# زیر می‌ماند که روی فدورا همیشه نصب است:
+AutoReq:        no
+AutoProv:       no
+%global __os_install_post %{nil}
+%global _enable_debug_packages 0
+
 Requires:       polkit
 Requires:       iproute
 

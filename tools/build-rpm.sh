@@ -59,6 +59,17 @@ export PIP_DISABLE_PIP_VERSION_CHECK=1
 
 find "$STAGE" -name "__pycache__" -type d -prune -exec rm -rf {} + 2>/dev/null || true
 
+echo "==> [6/7] run.sh + نسخه پرتابل لینوکس (جایگزین در صورت مشکل RPM)"
+cat > "$STAGE/run.sh" <<'EOF'
+#!/bin/bash
+# Nice VPN — اجرای نسخه پرتابل (بدون نیاز به نصب)
+DIR="$(cd "$(dirname "$0")" && pwd)"
+exec "$DIR/runtime/bin/python3" -m nicevpn "$@"
+EOF
+chmod 755 "$STAGE/run.sh"
+tar -C "$TMP" -czf "$DIST/NiceVPN-$VER-Linux-portable.tar.gz" "nicevpn-$VER"
+echo "   portable -> $DIST/NiceVPN-$VER-Linux-portable.tar.gz"
+
 echo "==> [7/7] tarball + rpmbuild"
 tar -C "$TMP" -czf "$TMP/nicevpn-$VER.tar.gz" "nicevpn-$VER"
 
