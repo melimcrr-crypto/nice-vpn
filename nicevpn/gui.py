@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """GUI اصلی Nice VPN — PySide6 (سازگار با KDE Plasma/Breeze و ویندوز، تم تیره، RTL فارسی)"""
 import os
+import subprocess
 import sys
 
 from PySide6.QtCore import Qt, QTimer, QSettings, QSize, QRectF, Signal
@@ -18,6 +19,7 @@ from . import core as core_mod
 from . import paths
 from . import sysproxy
 from . import __version__
+from .core import ST_STOPPED, ST_CONNECTING, ST_CONNECTED, ST_FAILED
 from .xrayconf import SOCKS_PORT, HTTP_PORT
 
 ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
@@ -191,7 +193,7 @@ class ServerCard(QFrame):
         right = QVBoxLayout()
         name = QLabel(node.name)
         name.setStyleSheet("color:#f1f5f9; font-weight:700; font-size:14.5px; border:none; background:transparent;")
-        meta = QLabel(f"{node.address}  •  {node.type_label}")
+        meta = QLabel(f"{node.real_addr[0]}:{node.real_addr[1]}  •  {node.type_label}")
         meta.setStyleSheet("color:#64748b; font-size:11.5px; border:none; background:transparent;")
         right.addWidget(name)
         right.addWidget(meta)
@@ -245,6 +247,7 @@ class MainWindow(QMainWindow):
             self.selected_idx = 0
         self.auto_proxy = self.settings.value("auto_proxy", "1") == "1"
         self.want_tun = self.settings.value("tun_mode", "0") == "1"
+        self._proxy_active = False  # برای جلوگیری از ست‌های تکراری پروکسی سیستم
 
         root = QWidget(objectName="root")
         self.setCentralWidget(root)
@@ -284,6 +287,7 @@ class MainWindow(QMainWindow):
         info.setObjectName("subtitle")
         info.setAlignment(Qt.AlignCenter)
         v.addWidget(info)
+        self.info_ports = info
 
         # ---------- گزینه‌ها ----------
         opt = QHBoxLayout()
@@ -291,9 +295,9 @@ class MainWindow(QMainWindow):
         self.chk_proxy.setChecked(self.auto_proxy)
         self.chk_proxy.toggled.connect(self._on_auto_proxy)
         opt.addWidget(self.chk_proxy)
-        self.chk_tun = QCheckBox("حالت TUN (نیاز به رمز)")
+        self.chk_tun = QCheckBox("تونل کامل سیستم (رمز مدیر)")
         self.chk_tun.setChecked(self.want_tun)
-        self.chk_tun.setToolTip("کل ترافیک سیستم از تونل رد می‌شود (hev-socks5-tunnel با pkexec)")
+        self.chk_tun.setToolTip("کل ترافیک سیستم از تونل رد می‌شود (tun2socks + pkexec — روت‌ها خودکار برمی‌گردند)")
         self.chk_tun.toggled.connect(self._on_tun)
         # TUN فقط در لینوکس
         self.chk_tun.setVisible(not paths.IS_WIN)
@@ -320,12 +324,16 @@ class MainWindow(QMainWindow):
 
         menu_btn = QPushButton("☰ منو"); menu_btn.setObjectName("ghost")
         m = QMenu(self)
+        m.addAction("اتصال خودکار (بهترین سرور)", self.auto_connect)
+        m.addSeparator()
         m.addAction("افزودن کانفیگ از کلیپ‌بورد (vless/vmess)", self._add_from_clip)
         m.addAction("افزودن از فایل…", self._add_from_file)
         m.addAction("سابسکریپشن (URL)…", self._add_sub)
         m.addSeparator()
         m.addAction("بررسی IP و لوکیشن فعلی", self._check_ip)
         m.addAction("کپی تنظیمات ترمینال", self._copy_env)
+        m.addSeparator()
+        m.addAction("تشخیص مشکلات", self._diag)
         m.addSeparator()
         m.addAction("حذف کانفیگ‌های دستی", self._clear_custom)
         m.addAction("درباره Nice VPN", self._about)
@@ -391,9 +399,11 @@ class MainWindow(QMainWindow):
     def ping_all(self, silent=False):
         def worker():
             import concurrent.futures as cf
+            # پینگ به آدرسِ «واقعیِ» اتصال (از داخل outbound) — نه آدرس نمایشی لیست
             with cf.ThreadPoolExecutor(max_workers=8) as ex:
                 results = list(ex.map(
-                    lambda n: core_mod.tcp_ping(n.address, n.port, timeout=3), self.all_nodes))
+                    lambda n: core_mod.tcp_ping(n.real_addr[0], n.real_addr[1], timeout=3),
+                    self.all_nodes))
             QTimer.singleShot(0, lambda: self._apply_pings(results))
         import threading
         threading.Thread(target=worker, daemon=True).start()
@@ -408,9 +418,9 @@ class MainWindow(QMainWindow):
 
     # ---------------- connect ----------------
     def toggle_connect(self):
-        st = self.core.state
-        if st == "stopped":
+        if self.core.state in (ST_STOPPED, ST_FAILED):
             node = self.all_nodes[self.selected_idx]
+            self._proxy_active = False
             try:
                 self.core.start(node, tun_mode=self.chk_tun.isChecked())
             except core_mod.CoreError as e:
@@ -421,24 +431,85 @@ class MainWindow(QMainWindow):
                 ok, err = sysproxy.set_system_proxy(False)
                 if not ok:
                     self._on_log(f"[proxy] {err}")
+            self._proxy_active = False
+
+    # ---------------- اتصال خودکار به بهترین سرور ----------------
+    def auto_connect(self):
+        if self.core.state in (ST_CONNECTING, ST_CONNECTED):
+            self.status.setText("اول قطع کنید — اتصال فعلی باز است")
+            return
+        self.status.setText("اتصال خودکار — پینگ همه سرورها …")
+        import threading
+        import time as _t
+
+        def worker():
+            import concurrent.futures as cf
+            nodes = self.all_nodes
+            with cf.ThreadPoolExecutor(max_workers=8) as ex:
+                pings = list(ex.map(
+                    lambda n: core_mod.tcp_ping(n.real_addr[0], n.real_addr[1], timeout=3),
+                    nodes))
+            order = sorted(range(len(nodes)), key=lambda i: (pings[i] is None, pings[i] or 99999))
+            for i in order:
+                node = nodes[i]
+                ping_s = "—" if pings[i] is None else f"{pings[i]} ms"
+                QTimer.singleShot(0, lambda s=f"اتصال خودکار: {node.name} ({ping_s}) …":
+                                  self.status.setText(s))
+                try:
+                    self.core.start(node, tun_mode=False)  # در تلاش‌های خودکار فقط پروکسی
+                except core_mod.CoreError as e:
+                    self._on_log(f"[auto] {node.name}: {e}")
+                    continue
+                deadline = _t.time() + 35
+                while _t.time() < deadline:
+                    if self.core.state in (ST_CONNECTED, ST_FAILED, ST_STOPPED):
+                        break
+                    _t.sleep(0.5)
+                if self.core.state == ST_CONNECTED:
+                    QTimer.singleShot(0, lambda: self.status.setText("اتصال خودکار موفق بود ✔"))
+                    return
+                try:
+                    self.core.stop()
+                except Exception:
+                    pass
+                _t.sleep(1.2)
+            QTimer.singleShot(0, lambda: QMessageBox.warning(
+                self, "اتصال خودکار",
+                "هیچ سروری جواب نداد.\nاینترنت و فیلترشکن فعلی را بررسی کنید و دوباره امتحان کنید."))
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _on_state(self, state, msg):
         QTimer.singleShot(0, lambda: self._apply_state_ui(state, msg))
 
     def _apply_state_ui(self, state, msg):
         self.status.setText(msg)
-        self.btn.set_phase(state)
-        if state == "connected":
+        self.btn.set_phase(state if state in (ST_CONNECTING, ST_CONNECTED) else ST_STOPPED)
+        if state == ST_CONNECTED:
             self.tray_toggle.setText("قطع اتصال")
             self.tray.setToolTip("Nice VPN — متصل")
-            if self.chk_proxy.isChecked() and not (self.chk_tun.isVisible() and self.chk_tun.isChecked()):
-                ok, err = sysproxy.set_system_proxy(True)
+            self.info_ports.setText(
+                f"SOCKS5: 127.0.0.1:{self.core.socks_port}   •   HTTP: 127.0.0.1:{self.core.http_port}")
+            if self.chk_proxy.isChecked() and not (self.chk_tun.isVisible() and self.chk_tun.isChecked()) \
+                    and not self._proxy_active:
+                self._proxy_active = True
+                ok, err = sysproxy.set_system_proxy(True, http_port=self.core.http_port,
+                                                    socks_port=self.core.socks_port)
                 if not ok:
                     self._on_log(f"[proxy] {err}")
                 else:
                     self._on_log("[proxy] پروکسی سیستم فعال شد")
-        elif state == "stopped":
+        elif state == ST_STOPPED:
             self.tray_toggle.setText("اتصال")
+            self.info_ports.setText(
+                f"SOCKS5: 127.0.0.1:{SOCKS_PORT}   •   HTTP: 127.0.0.1:{HTTP_PORT}")
+        elif state == ST_FAILED:
+            self.tray_toggle.setText("اتصال")
+            self.status.setStyleSheet("color:#f87171;")
+            self.logs.setVisible(True)
+            QTimer.singleShot(8000, lambda: self.status.setStyleSheet(""))
+            QTimer.singleShot(8000, lambda: self.status.setText(
+                "آماده — سرور دیگری را امتحان کنید یا از منو «اتصال خودکار» را بزنید"))
 
     def _on_log(self, line):
         QTimer.singleShot(0, lambda: self.logs.appendPlainText(line))
@@ -453,10 +524,11 @@ class MainWindow(QMainWindow):
     def _on_tun(self, on):
         self.want_tun = on
         self.settings.setValue("tun_mode", "1" if on else "0")
-        if on and not os.path.isfile(paths.TUN_BIN):
-            QMessageBox.warning(self, "حالت TUN",
-                "باینری hev-socks5-tunnel نصب نیست.\n"
-                "برای نصب اجرا کنید:\n    bash tools/fetch-binaries.sh --with-tun")
+        if on and not paths.IS_WIN and not os.path.isfile(paths.TUN_BIN):
+            QMessageBox.warning(self, "تونل کامل",
+                "باینری tun2socks پیدا نشد.\n"
+                "اگر از سورس اجرا می‌کنید:  bash tools/fetch-binaries.sh --with-tun\n"
+                "در بسته نصبی (RPM) تونل داخل خود برنامه است.")
 
     # ---------------- menu actions ----------------
     def _add_nodes(self, new_nodes):
@@ -551,8 +623,40 @@ class MainWindow(QMainWindow):
                 self.custom_nodes = []
 
     def _copy_env(self):
-        QApplication.clipboard().setText(sysproxy.env_export_hint())
+        QApplication.clipboard().setText(sysproxy.env_export_hint(
+            http_port=getattr(self.core, "http_port", HTTP_PORT),
+            socks_port=getattr(self.core, "socks_port", SOCKS_PORT)))
         self.status.setText("دستورات ترمینال کپی شد")
+
+    # ---------------- عیب‌یابی ----------------
+    def _diag(self):
+        import platform
+        lines = [f"Nice VPN {__version__}",
+                 f"Python: {platform.python_version()} ({sys.executable})"]
+        try:
+            from PySide6 import __version__ as qv
+            lines.append(f"PySide6: {qv}")
+        except Exception as e:
+            lines.append(f"PySide6: خطا! {e}")
+        lines.append(f"xray: {paths.XRAY_BIN}")
+        if os.path.isfile(paths.XRAY_BIN):
+            try:
+                r = subprocess.run([paths.XRAY_BIN, "version"], capture_output=True, text=True, timeout=10)
+                lines.append("  " + (r.stdout or r.stderr).strip().splitlines()[0])
+            except Exception as e:
+                lines.append(f"  اجرا نشد: {e}")
+        else:
+            lines.append("  ⚠ پیدا نشد!")
+        lines.append(f"tun2socks: {paths.TUN_BIN} " +
+                     ("(موجود)" if os.path.isfile(paths.TUN_BIN) else "(پیدا نشد — فقط پروکسی)"))
+        lines.append(f"اسکریپت تونل: {paths.find_tun_helper() or 'پیدا نشد'}")
+        from .xrayconf import has_geo_files
+        lines.append(f"فایل‌های geo (بلاک تبلیغ/ایران مستقیم): {'موجود' if has_geo_files() else 'نیستند'}")
+        lines.append(f"پورت‌ها: SOCKS {getattr(self.core, 'socks_port', SOCKS_PORT)} / "
+                     f"HTTP {getattr(self.core, 'http_port', HTTP_PORT)}")
+        lines.append(f"محیط دسکتاپ: {sysproxy.desktop_env()}")
+        lines.append(f"وضعیت هسته: {self.core.state}")
+        QMessageBox.information(self, "تشخیص مشکلات", "\n".join(lines))
 
     def _about(self):
         QMessageBox.about(self, "درباره Nice VPN",

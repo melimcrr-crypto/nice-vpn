@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# دانلود xray (لینوکس) و فایل‌های geo برای اجرای از سورس
+# دانلود xray + tun2socks (لینوکس) و فایل‌های geo برای اجرای از سورس
 # استفاده:  bash tools/fetch-binaries.sh [--with-tun]
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -28,15 +28,13 @@ if [ ! -f "$ROOT/data/geosite.dat" ]; then
 fi
 
 if [ "${1:-}" = "--with-tun" ]; then
-  echo "==> hev-socks5-tunnel (حالت TUN) ..."
-  T=$(mktemp -d)
-  curl -fsSL -o "$T/hev.tar.gz" https://github.com/heiher/hev-socks5-tunnel/releases/latest/download/hev-socks5-tunnel-linux-x86_64.tar.gz 2>/dev/null \
-    || curl -fsSL -o "$T/hev" https://github.com/heiher/hev-socks5-tunnel/releases/latest/download/hev-socks5-tunnel-linux-x86_64
-  (tar -C "$T" -xzf "$T/hev.tar.gz" 2>/dev/null || true)
-  B=$(find "$T" -name "hev-socks5-tunnel" -type f | head -1)
-  [ -n "$B" ] && cp "$B" "$ROOT/bin/hev-socks5-tunnel" && chmod 755 "$ROOT/bin/hev-socks5-tunnel" \
-    || { curl -fsSL -o "$ROOT/bin/hev-socks5-tunnel" https://github.com/heiher/hev-socks5-tunnel/releases/latest/download/hev-socks5-tunnel-linux-x86_64 && chmod 755 "$ROOT/bin/hev-socks5-tunnel"; }
-  rm -rf "$T"
+  echo "==> tun2socks (تونل کامل) ..."
+  T2=$(mktemp -d)
+  curl -fsSL -o "$T2/t2s.zip" https://github.com/xjasonlyu/tun2socks/releases/download/v2.7.0/tun2socks-linux-amd64.zip
+  python3 -m zipfile -e "$T2/t2s.zip" "$T2/t2s/"
+  cp "$T2/t2s/tun2socks-linux-amd64" "$ROOT/bin/tun2socks"
+  chmod 755 "$ROOT/bin/tun2socks"
+  rm -rf "$T2"
 fi
 
 echo "OK: bin/ و data/ آماده است"

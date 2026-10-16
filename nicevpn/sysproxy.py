@@ -44,12 +44,14 @@ def _dbus_reload_kde():
     return False
 
 
-def set_kde_proxy(on):
+def set_kde_proxy(on, http_port=None, socks_port=None):
+    http_port = http_port or xrayconf.HTTP_PORT
+    socks_port = socks_port or xrayconf.SOCKS_PORT
     kw = _kwriteconfig()
     if not kw:
         return False, "kwriteconfig پیدا نشد (kde-cli-tools را نصب کنید: sudo dnf install kde-cli-tools)"
-    http = f"http://127.0.0.1:{xrayconf.HTTP_PORT}"
-    socks = f"socks://127.0.0.1:{xrayconf.SOCKS_PORT}"
+    http = f"http://127.0.0.1:{http_port}"
+    socks = f"socks://127.0.0.1:{socks_port}"
     cmds = [
         [kw, "--file", "kioslaverc", "--group", "Proxy Settings", "--key", "ProxyType", "1" if on else "0"],
     ]
@@ -70,7 +72,10 @@ def set_kde_proxy(on):
     return ok, None
 
 
-def set_gnome_proxy(on):
+def set_gnome_proxy(on, http_port=None, socks_port=None):
+    http_port = http_port or xrayconf.HTTP_PORT
+    socks_port = socks_port or xrayconf.SOCKS_PORT
+
     def g(*args):
         return subprocess.run(["gsettings", *args], capture_output=True, text=True).returncode == 0
 
@@ -79,20 +84,21 @@ def set_gnome_proxy(on):
     if on:
         mode_ok = g("set", "org.gnome.system.proxy", "mode", "'manual'")
         g("set", "org.gnome.system.proxy.http", "host", "127.0.0.1")
-        g("set", "org.gnome.system.proxy.http", "port", str(xrayconf.HTTP_PORT))
+        g("set", "org.gnome.system.proxy.http", "port", str(http_port))
         g("set", "org.gnome.system.proxy.https", "host", "127.0.0.1")
-        g("set", "org.gnome.system.proxy.https", "port", str(xrayconf.HTTP_PORT))
+        g("set", "org.gnome.system.proxy.https", "port", str(http_port))
         g("set", "org.gnome.system.proxy.ftp", "host", "127.0.0.1")
-        g("set", "org.gnome.system.proxy.ftp", "port", str(xrayconf.HTTP_PORT))
+        g("set", "org.gnome.system.proxy.ftp", "port", str(http_port))
         g("set", "org.gnome.system.proxy.socks", "host", "127.0.0.1")
-        g("set", "org.gnome.system.proxy.socks", "port", str(xrayconf.SOCKS_PORT))
+        g("set", "org.gnome.system.proxy.socks", "port", str(socks_port))
         g("set", "org.gnome.system.proxy", "use-same-proxy", "false")
         return mode_ok, None
     g("set", "org.gnome.system.proxy", "mode", "'none'")
     return True, None
 
 
-def set_windows_proxy(on):
+def set_windows_proxy(on, http_port=None):
+    http_port = http_port or xrayconf.HTTP_PORT
     """پروکسی ویندوز از طریق رجیستری (WinINET) — همه برنامه‌هایی که پروکسی سیستم را رعایت کنند."""
     try:
         import winreg
@@ -100,7 +106,7 @@ def set_windows_proxy(on):
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE) as k:
             winreg.SetValueEx(k, "ProxyEnable", 0, winreg.REG_DWORD, 1 if on else 0)
             if on:
-                winreg.SetValueEx(k, "ProxyServer", 0, winreg.REG_SZ, f"127.0.0.1:{xrayconf.HTTP_PORT}")
+                winreg.SetValueEx(k, "ProxyServer", 0, winreg.REG_SZ, f"127.0.0.1:{http_port}")
                 winreg.SetValueEx(k, "ProxyOverride", 0, winreg.REG_SZ,
                                   "localhost;127.*;10.*;172.16.*;192.168.*;<local>")
         # اطلاع‌رسانی به سیستم برای اعمال فوری
@@ -113,29 +119,31 @@ def set_windows_proxy(on):
         return False, str(e)
 
 
-def set_system_proxy(on):
+def set_system_proxy(on, http_port=None, socks_port=None):
     """فعال/غیرفعال کردن پروکسی سیستم. برگرداندن (ok, err)."""
     env = desktop_env()
     if env == "windows":
-        return set_windows_proxy(on)
+        return set_windows_proxy(on, http_port=http_port)
     if env == "kde":
-        return set_kde_proxy(on)
+        return set_kde_proxy(on, http_port=http_port, socks_port=socks_port)
     if env == "gnome":
-        return set_gnome_proxy(on)
+        return set_gnome_proxy(on, http_port=http_port, socks_port=socks_port)
     # خارج از دسکتاپ‌های شناخته‌شده: gsettings را هم امتحان کن
     if shutil.which("gsettings"):
-        return set_gnome_proxy(on)
-    return False, "محیط دسکتاپ پشتیبانی نمی‌شود (KDE/GNOME). از حالت TUN یا تنظیم دستی استفاده کنید."
+        return set_gnome_proxy(on, http_port=http_port, socks_port=socks_port)
+    return False, "محیط دسکتاپ پشتیبانی نمی‌شود (KDE/GNOME). از حالت تونل کامل یا تنظیم دستی استفاده کنید."
 
 
-def env_export_hint():
+def env_export_hint(http_port=None, socks_port=None):
+    http_port = http_port or xrayconf.HTTP_PORT
+    socks_port = socks_port or xrayconf.SOCKS_PORT
     if paths.IS_WIN:
         return (
-            f"set http_proxy=http://127.0.0.1:{xrayconf.HTTP_PORT}\r\n"
-            f"set https_proxy=http://127.0.0.1:{xrayconf.HTTP_PORT}\r\n"
+            f"set http_proxy=http://127.0.0.1:{http_port}\r\n"
+            f"set https_proxy=http://127.0.0.1:{http_port}\r\n"
         )
     return (
-        f"export http_proxy=http://127.0.0.1:{xrayconf.HTTP_PORT}\n"
-        f"export https_proxy=http://127.0.0.1:{xrayconf.HTTP_PORT}\n"
-        f"export all_proxy=socks5://127.0.0.1:{xrayconf.SOCKS_PORT}"
+        f"export http_proxy=http://127.0.0.1:{http_port}\n"
+        f"export https_proxy=http://127.0.0.1:{http_port}\n"
+        f"export all_proxy=socks5://127.0.0.1:{socks_port}"
     )

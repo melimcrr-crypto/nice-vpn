@@ -46,6 +46,17 @@ class Node:
         return _COUNTRY_FLAGS.get(self.cc, "🌐")
 
     @property
+    def real_addr(self):
+        """آدرس/پورت واقعی اتصال از داخل outbound — برای پینگ دقیق.
+        (در دیتای APK آدرس نمایشی گاهی با آدرس واقعی اتصال فرق دارد؛
+        مثلاً نود ۱: نمایش 213.193.242.145 ولی اتصال واقعی به 213.193.242.143)"""
+        try:
+            v = self.outbound["settings"]["vnext"][0]
+            return v["address"], int(v["port"])
+        except Exception:
+            return self.address, self.port
+
+    @property
     def type_label(self):
         return _TYPE_NAMES.get(self.ptype, self.ptype)
 
@@ -207,4 +218,5 @@ def fetch_subscription(url):
 
 if __name__ == "__main__":
     for n in load_builtin_nodes():
-        print(n.name, "|", n.address, n.port, "|", n.type_label)
+        ra = n.real_addr
+        print(n.name, "|", n.address, n.port, "→ واقعی:", ra[0], ra[1], "|", n.type_label)

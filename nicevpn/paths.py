@@ -6,6 +6,7 @@ import sys
 
 IS_WIN = sys.platform.startswith("win")
 XRAY_NAME = "xray.exe" if IS_WIN else "xray"
+TUN_NAME = "tun2socks.exe" if IS_WIN else "tun2socks"
 
 
 def _has_core(base):
@@ -39,7 +40,18 @@ APP_DIR = _find_app_dir()
 BIN_DIR = os.path.join(APP_DIR, "bin")
 DATA_DIR = os.path.join(APP_DIR, "data")
 XRAY_BIN = os.path.join(BIN_DIR, XRAY_NAME)
-TUN_BIN = os.path.join(BIN_DIR, "hev-socks5-tunnel")
+TUN_BIN = os.path.join(BIN_DIR, TUN_NAME)
+
+
+def find_tun_helper():
+    """اسکریپت روتِ راه‌اندازی تونل (روت + روتینگ) — در RPM داخل bin/ است."""
+    cands = [os.path.join(BIN_DIR, "nicevpn-tun")]
+    d = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cands.append(os.path.join(d, "packaging", "linux", "nicevpn-tun"))
+    for c in cands:
+        if os.path.isfile(c):
+            return c
+    return None
 
 if IS_WIN:
     _base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")

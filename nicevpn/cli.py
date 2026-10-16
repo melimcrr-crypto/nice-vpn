@@ -24,11 +24,13 @@ def _resolve_node(name_or_index, custom_nodes=None):
 
 def cmd_list(args):
     for i, n in enumerate(nodes_mod.load_builtin_nodes(), 1):
-        print(f"{i:2d}. {n.name:<40} {n.address}:{n.port}  [{n.type_label}]")
+        ra = n.real_addr
+        print(f"{i:2d}. {n.name:<40} {ra[0]}:{ra[1]}  [{n.type_label}]")
     if args.ping:
-        print("\nدر حال تست پینگ …")
+        print("\nدر حال تست پینگ (آدرس واقعی اتصال) …")
         for i, n in enumerate(nodes_mod.load_builtin_nodes(), 1):
-            ms = core_mod.tcp_ping(n.address, n.port)
+            ra = n.real_addr
+            ms = core_mod.tcp_ping(ra[0], ra[1])
             print(f"{i:2d}. {n.name:<40} {'—' if ms is None else str(ms) + ' ms'}")
 
 
@@ -38,7 +40,8 @@ def cmd_connect(args):
     core = core_mod.VpnCore(on_state=lambda s, m: print(f"[{s}] {m}"), on_log=lambda l: print("  |", l))
     core.start(node, tun_mode=args.tun)
     if args.proxy:
-        ok, err = sysproxy.set_system_proxy(True)
+        ok, err = sysproxy.set_system_proxy(True, http_port=core.http_port,
+                                            socks_port=core.socks_port)
         print("پروکسی سیستم:", "فعال شد" if ok else f"خطا: {err}")
     try:
         time.sleep(2)
@@ -46,6 +49,7 @@ def cmd_connect(args):
         print(f"IP ظاهری: {ip[0]} ({ip[1]} — {ip[2]})")
     except Exception as e:
         print("تست IP:", e)
+    print(f"پورت‌ها: SOCKS {core.socks_port} / HTTP {core.http_port}")
     print("برای قطع: nicevpn-cli disconnect  |  Ctrl+C")
     try:
         while True:
@@ -65,8 +69,9 @@ def cmd_disconnect(args):
 
 
 def cmd_status(args):
-    alive = core_mod.VpnCore._socks_alive()
+    alive = core_mod.VpnCore._socks_alive(10808)
     print("پورت SOCKS 10808:", "باز (اتصال فعال)" if alive else "بسته")
+    print("پورت SOCKS 20808 (جایگزین):", "باز" if core_mod.VpnCore._socks_alive(20808) else "بسته")
 
 
 def cmd_addurl(args):
@@ -86,7 +91,7 @@ def main():
     p = sub.add_parser("connect", help="اتصال به سرور (شماره یا نام)")
     p.add_argument("server", help="شماره یا نام سرور")
     p.add_argument("--proxy", action="store_true", help="پروکسی سیستم هم فعال شود")
-    p.add_argument("--tun", action="store_true", help="حالت TUN (نیاز به pkexec — فقط لینوکس)")
+    p.add_argument("--tun", action="store_true", help="تونل کامل (pkexec — فقط لینوکس)")
     p.set_defaults(fn=cmd_connect)
 
     sub.add_parser("disconnect", help="قطع اتصال").set_defaults(fn=cmd_disconnect)

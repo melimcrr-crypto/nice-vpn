@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""تولید کانفیگ Xray (حالت پروکسی) و کانفیگ hev-socks5-tunnel (حالت TUN لینوکس)."""
+"""تولید کانفیگ Xray (حالت پروکسی) — پورت‌ها به‌صورت پارامتر تا در صورت اشغال، خودکار جابجا شوند."""
 import json
 import os
 
@@ -8,34 +8,21 @@ from . import paths
 
 SOCKS_PORT = 10808
 HTTP_PORT = 10809
+TUN_DEVICE = "nicev0"   # نام اینترفیس TUN (توسط nicevpn-tun مدیریت می‌شود)
 DATA_DIR = paths.DATA_DIR
-TUN_CONFIG = """tunnel:
-  name: nicev0
-  mtu: 8500
-
-socks5:
-  address: 127.0.0.1
-  port: %(socks)d
-  udp: udp
-  tcp: tcp
-
-dns:
-  upstream:
-    - udp://1.1.1.1:53
-    - tcp://8.8.8.8:53
-
-misc:
-  log-level: warn
-""" % {"socks": SOCKS_PORT}
 
 
-def build_xray_config(node, loglevel="warning", block_ads=True, direct_ir=True):
+def build_xray_config(node, loglevel="warning", block_ads=True, direct_ir=True,
+                      socks_port=None, http_port=None):
     """ساخت کانفیگ کامل Xray برای یک نود مشخص.
 
-    - inbound: SOCKS5 روی 127.0.0.1:10808 (+UDP) و HTTP روی 127.0.0.1:10809
+    - inbound: SOCKS5 روی 127.0.0.1:socks_port (+UDP) و HTTP روی 127.0.0.1:http_port
     - routing: لوکال و ایران مستقیم، تبلیغات بلاک
     - قوانین geo فقط وقتی فعال می‌شوند که فایل‌های geoip/geosite موجود باشند
     """
+    socks_port = int(socks_port or SOCKS_PORT)
+    http_port = int(http_port or HTTP_PORT)
+
     proxy_out = dict(node.outbound)
     proxy_out["tag"] = "proxy"
 
@@ -65,7 +52,7 @@ def build_xray_config(node, loglevel="warning", block_ads=True, direct_ir=True):
             {
                 "tag": "socks-in",
                 "listen": "127.0.0.1",
-                "port": SOCKS_PORT,
+                "port": socks_port,
                 "protocol": "socks",
                 "settings": {"auth": "noauth", "udp": True, "ip": "127.0.0.1"},
                 "sniffing": {"enabled": True, "destOverride": ["http", "tls", "quic"]},
@@ -73,7 +60,7 @@ def build_xray_config(node, loglevel="warning", block_ads=True, direct_ir=True):
             {
                 "tag": "http-in",
                 "listen": "127.0.0.1",
-                "port": HTTP_PORT,
+                "port": http_port,
                 "protocol": "http",
                 "settings": {},
                 "sniffing": {"enabled": True, "destOverride": ["http", "tls"]},
@@ -90,16 +77,11 @@ def has_geo_files():
             and os.path.isfile(os.path.join(DATA_DIR, "geosite.dat")))
 
 
-def write_xray_config(node, cache_dir, block_ads=True, direct_ir=True):
+def write_xray_config(node, cache_dir, block_ads=True, direct_ir=True,
+                      socks_port=None, http_port=None):
     path = os.path.join(cache_dir, "xray-config.json")
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(build_xray_config(node, block_ads=block_ads, direct_ir=direct_ir),
+        json.dump(build_xray_config(node, block_ads=block_ads, direct_ir=direct_ir,
+                                    socks_port=socks_port, http_port=http_port),
                   f, ensure_ascii=False, indent=2)
-    return path
-
-
-def write_tun_config(cache_dir):
-    path = os.path.join(cache_dir, "hev-tunnel.yml")
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(TUN_CONFIG)
     return path

@@ -1,0 +1,61 @@
+#!/bin/bash
+# Nice VPN — راه‌انداز تونل کامل (روت، از طریق pkexec)
+# استفاده: nicevpn-tun <tun2socks_bin> <device> <socks_port> <server_ip>
+# کارها: tun2socks بالا می‌آید، روت سرور از درگاه اصلی حفظ می‌شود (ضد حلقه)،
+#        default route از تونل رد می‌شود، IPv6 موقتاً بسته می‌شود (ضد نشت)،
+#        و با خروج/کشته‌شدن این اسکریپت همه‌چیز برمی‌گردد.
+set -u
+
+T2S="${1:?tun2socks bin}"
+DEV="${2:?device name}"
+SPORT="${3:?socks port}"
+SRV="${4:?server ip}"
+
+ORIG_DEFAULT="$(ip -4 route show default 2>/dev/null | head -n1)"
+ORIG_GW="$(printf '%s' "$ORIG_DEFAULT" | sed -n 's/.* via \([^ ]*\).*/\1/p')"
+ORIF="$(printf '%s' "$ORIG_DEFAULT" | sed -n 's/.* dev \([^ ]*\).*/\1/p')"
+
+# وضعیت IPv6 برای بازگردانی
+V6_DISABLED_BEFORE="$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6 2>/dev/null || echo 1)"
+
+cleanup() {
+  ip route del default dev "$DEV" 2>/dev/null
+  if [ -n "$ORIF" ]; then
+    ip route del "$SRV"/32 dev "$ORIF" ${ORIG_GW:+via "$ORIG_GW"} 2>/dev/null
+  fi
+  if [ "$V6_DISABLED_BEFORE" = "0" ]; then
+    sysctl -qw net.ipv6.conf.all.disable_ipv6=0 net.ipv6.conf.default.disable_ipv6=0 2>/dev/null
+  fi
+  pkill -f "tun2socks.*--device tun://$DEV" 2>/dev/null
+  ip link del "$DEV" 2>/dev/null
+  exit 0
+}
+trap cleanup INT TERM HUP EXIT
+
+# ضد نشت IPv6
+if [ "$V6_DISABLED_BEFORE" = "0" ]; then
+  sysctl -qw net.ipv6.conf.all.disable_ipv6=1 net.ipv6.conf.default.disable_ipv6=1 2>/dev/null
+fi
+
+"$T2S" --device "tun://$DEV" --proxy "socks5://127.0.0.1:$SPORT" --loglevel warning &
+T2S_PID=$!
+
+# صبر برای ساخته‌شدن اینترفیس
+i=0
+while [ "$i" -lt 50 ]; do
+  kill -0 "$T2S_PID" 2>/dev/null || { echo "tun2socks early-exit"; exit 1; }
+  ip link show "$DEV" >/dev/null 2>&1 && break
+  sleep 0.2
+  i=$((i+1))
+done
+ip link show "$DEV" >/dev/null 2>&1 || { echo "TUN device $DEV did not appear"; exit 1; }
+ip link set "$DEV" up 2>/dev/null
+
+# مسیر سرور از درگاه اصلی (ضد حلقه) + default از تونل
+if [ -n "$ORIF" ]; then
+  ip route replace "$SRV"/32 dev "$ORIF" ${ORIG_GW:+via "$ORIG_GW"} 2>/dev/null
+fi
+ip route replace default dev "$DEV" metric 1 2>/dev/null || echo "route setup failed"
+
+echo "TUN ready: $DEV -> socks5 127.0.0.1:$SPORT (server $SRV via ${ORIF:-n/a})"
+wait "$T2S_PID"
