@@ -1,0 +1,198 @@
+[
+  {
+    "name": "🇩🇪 Frankfurt 1 — Reality XHTTP",
+    "address": "213.193.242.145",
+    "port": 2097,
+    "city": "Frankfurt",
+    "country": "Germany",
+    "cc": "DE",
+    "ptype": "xhttp_reality",
+    "protocol": "vless",
+    "outbound": {
+      "settings": {
+        "vnext": [
+          {
+            "address": "213.193.242.143",
+            "port": 2097,
+            "users": [
+              {
+                "id": "7509038c-44e3-4673-9510-f7428b8f0e23",
+                "encryption": "none",
+                "flow": ""
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "xhttp",
+        "xhttpSettings": {
+          "mode": "auto",
+          "host": "ok.ru",
+          "path": "/api/v2/heartbeat",
+          "extra": {
+            "noGRPCHeader": false,
+            "xPaddingBytes": "100-1000"
+          }
+        },
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "ok.ru",
+          "publicKey": "C95uH5fpIDOCNtQLMHT-iClKnIDpQIwACsRmMziKs2o",
+          "password": "C95uH5fpIDOCNtQLMHT-iClKnIDpQIwACsRmMziKs2o",
+          "shortId": "d30cdaabfa51d4e2",
+          "fingerprint": "qq"
+        }
+      },
+      "protocol": "vless"
+    }
+  },
+  {
+    "name": "🇩🇪 Frankfurt 2 — VLESS WS",
+    "address": "213.193.242.112",
+    "port": 2087,
+    "city": "Frankfurt",
+    "country": "Germany",
+    "cc": "DE",
+    "ptype": "vless_ws",
+    "protocol": "vless",
+    "outbound": {
+      "settings": {
+        "vnext": [
+          {
+            "address": "213.193.242.112",
+            "port": 2087,
+            "users": [
+              {
+                "id": "3c4b84ea-cbee-4b72-b857-907ff9bf2fa3",
+                "encryption": "none",
+                "flow": ""
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": {
+          "path": "/768e3a42cdcf",
+          "headers": {
+            "Host": ""
+          }
+        },
+        "security": "none"
+      },
+      "protocol": "vless"
+    }
+  },
+  {
+    "name": "🇩🇪 Frankfurt 3 — VLESS WS",
+    "address": "213.193.242.162",
+    "port": 2087,
+    "city": "Frankfurt",
+    "country": "Germany",
+    "cc": "DE",
+    "ptype": "vless_ws",
+    "protocol": "vless",
+    "outbound": {
+      "settings": {
+        "vnext": [
+          {
+            "address": "213.193.242.162",
+            "port": 2087,
+            "users": [
+              {
+                "id": "3c4b84ea-cbee-4b72-b857-907ff9bf2fa3",
+                "encryption": "none",
+                "flow": ""
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": {
+          "path": "/768e3a42cdcf",
+          "headers": {
+            "Host": ""
+          }
+        },
+        "security": "none"
+      },
+      "protocol": "vless"
+    }
+  },
+  {
+    "name": "🇩🇪 Frankfurt 4 — gRPC",
+    "address": "213.193.242.206",
+    "port": 2083,
+    "city": "Frankfurt",
+    "country": "Germany",
+    "cc": "DE",
+    "ptype": "grpc_raw",
+    "protocol": "vless",
+    "outbound": {
+      "settings": {
+        "vnext": [
+          {
+            "address": "213.193.242.206",
+            "port": 2083,
+            "users": [
+              {
+                "id": "92659d25-209a-447e-ab2a-d14de315d759",
+                "encryption": "none",
+                "flow": "",
+                "level": 0
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "grpc",
+        "grpcSettings": {
+          "serviceName": "chat.deepseek.com",
+          "multiMode": false
+        }
+      },
+      "protocol": "vless"
+    }
+  },
+  {
+    "name": "🇩🇪 Frankfurt 5 — gRPC",
+    "address": "213.193.242.205",
+    "port": 2083,
+    "city": "Frankfurt",
+    "country": "Germany",
+    "cc": "DE",
+    "ptype": "grpc_raw",
+    "protocol": "vless",
+    "outbound": {
+      "settings": {
+        "vnext": [
+          {
+            "address": "213.193.242.205",
+            "port": 2083,
+            "users": [
+              {
+                "id": "92659d25-209a-447e-ab2a-d14de315d759",
+                "encryption": "none",
+                "flow": "",
+                "level": 0
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "grpc",
+        "grpcSettings": {
+          "serviceName": "chat.deepseek.com",
+          "multiMode": false
+        }
+      },
+      "protocol": "vless"
+    }
+  }
+]

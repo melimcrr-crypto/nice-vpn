@@ -1,0 +1,11 @@
+# باینری‌ها و داده‌های بزرگ در گیت نیستند — با tools/fetch-binaries.sh دانلود می‌شوند
+/bin/
+/data/
+/dist/
+/_logo_raw.png
+__pycache__/
+*.pyc
+*.rpm
+*.zip
+rpmroot/
+*.tar.gz

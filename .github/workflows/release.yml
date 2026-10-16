@@ -1,0 +1,74 @@
+name: Build & Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-rpm:
+    name: RPM (Fedora)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install rpm toolchain
+        run: sudo apt-get update && sudo apt-get install -y rpm python3
+      - name: Build RPM
+        run: bash tools/build-rpm.sh
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm
+          path: dist/*.rpm
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" dist/*.rpm --clobber \
+            --repo "$GITHUB_REPOSITORY" || \
+          gh release create "${GITHUB_REF_NAME}" dist/*.rpm \
+            --title "Nice VPN ${GITHUB_REF_NAME}" --notes "" --repo "$GITHUB_REPOSITORY"
+
+  build-windows:
+    name: Portable Windows x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build portable zip
+        run: bash tools/build-windows.sh
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: dist/*.zip
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" dist/*.zip --clobber \
+            --repo "$GITHUB_REPOSITORY" || \
+          gh release create "${GITHUB_REF_NAME}" dist/*.zip \
+            --title "Nice VPN ${GITHUB_REF_NAME}" --notes "" --repo "$GITHUB_REPOSITORY"
+
+  connectivity-test:
+    name: Live connection test
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch binaries
+        run: bash tools/fetch-binaries.sh
+      - name: Test all nodes through real network
+        run: |
+          set +e
+          FAIL=0
+          for i in 1 2 3 4 5; do
+            echo "===== node $i ====="
+            python3 tools/connect-test.py $i || FAIL=$((FAIL+1))
+          done
+          echo "nodes failed: $FAIL/5"
