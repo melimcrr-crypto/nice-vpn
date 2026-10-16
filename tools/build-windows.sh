@@ -17,7 +17,12 @@ python3 -m zipfile -e "$TMP/xray-win.zip" "$TMP/xray-win/"
 cp "$TMP/xray-win/xray.exe" "$STAGE/bin/"
 
 echo "==> [2/7] geo files ..."
-cp "$ROOT/data/geoip.dat" "$ROOT/data/geosite.dat" "$STAGE/data/"
+if [ -f "$ROOT/data/geoip.dat" ] && [ -f "$ROOT/data/geosite.dat" ]; then
+  cp "$ROOT/data/geoip.dat" "$ROOT/data/geosite.dat" "$STAGE/data/"
+else
+  curl -fsSL -o "$STAGE/data/geoip.dat" https://github.com/v2fly/geoip/releases/latest/download/geoip.dat
+  curl -fsSL -o "$STAGE/data/geosite.dat" https://github.com/v2fly/domain-list-community/releases/latest/download/dlc.dat
+fi
 
 echo "==> [3/7] python 3.11 embeddable ..."
 curl -fsSL -o "$TMP/pyembed.zip" https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip

@@ -26,7 +26,12 @@ fi
 chmod 755 "$STAGE/bin/xray"
 
 echo "==> geo files ..."
-cp "$ROOT/data/geoip.dat" "$ROOT/data/geosite.dat" "$STAGE/data/"
+if [ ! -f "$ROOT/data/geoip.dat" ] || [ ! -f "$ROOT/data/geosite.dat" ]; then
+  curl -fsSL -o "$STAGE/data/geoip.dat" https://github.com/v2fly/geoip/releases/latest/download/geoip.dat
+  curl -fsSL -o "$STAGE/data/geosite.dat" https://github.com/v2fly/domain-list-community/releases/latest/download/dlc.dat
+else
+  cp "$ROOT/data/geoip.dat" "$ROOT/data/geosite.dat" "$STAGE/data/"
+fi
 
 echo "==> tarball ..."
 tar -C "$TMP" -czf "$TMP/nicevpn-$VER.tar.gz" "nicevpn-$VER"
