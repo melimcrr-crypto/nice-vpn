@@ -49,5 +49,11 @@ rpmbuild -bb \
   --define "_srcrpmdir $DIST" \
   "$ROOT/packaging/rpm/nicevpn.spec"
 
+# rpmbuild خروجی را در dist/x86_64 می‌گذارد — به dist منتقل کن
+if [ -d "$DIST/x86_64" ]; then
+  mv "$DIST"/x86_64/*.rpm "$DIST/"
+  rmdir "$DIST/x86_64"
+fi
+
 rm -rf "$TMP"
 echo "OK -> $DIST/"
